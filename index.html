@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>IPL Matches Dashboard</title>
+
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <header>
+        <div class="container">
+            <h1>🏏 IPL Matches Dashboard</h1>
+            <p>Indian Premier League Match Analysis</p>
+        </div>
+    </header>
+
+    <main class="container">
+
+        <!-- Statistics -->
+        <section class="stats">
+
+            <div class="stat-card">
+                <h3>Total Matches</h3>
+                <p id="totalMatches">0</p>
+            </div>
+
+            <div class="stat-card">
+                <h3>Seasons</h3>
+                <p id="totalSeasons">0</p>
+            </div>
+
+            <div class="stat-card">
+                <h3>Teams</h3>
+                <p id="totalTeams">0</p>
+            </div>
+
+            <div class="stat-card">
+                <h3>Most Wins</h3>
+                <p id="mostWins">-</p>
+            </div>
+
+        </section>
+
+        <!-- Filters -->
+        <section class="controls">
+
+            <div>
+                <label for="seasonFilter">Season</label>
+
+                <select id="seasonFilter">
+                    <option value="all">All Seasons</option>
+                </select>
+            </div>
+
+            <div>
+                <label for="teamFilter">Team</label>
+
+                <select id="teamFilter">
+                    <option value="all">All Teams</option>
+                </select>
+            </div>
+
+            <div>
+                <label for="searchBox">Search</label>
+
+                <input
+                    type="text"
+                    id="searchBox"
+                    placeholder="Search team, city, venue..."
+                >
+            </div>
+
+        </section>
+
+        <!-- Match Table -->
+        <section class="table-section">
+
+            <div class="section-title">
+                <h2>Match Records</h2>
+                <span id="resultCount">0 matches</span>
+            </div>
+
+            <div class="table-wrapper">
+
+                <table>
+
+                    <thead>
+                        <tr>
+                            <th>Season</th>
+                            <th>City</th>
+                            <th>Team 1</th>
+                            <th>Team 2</th>
+                            <th>Winner</th>
+                            <th>Result</th>
+                            <th>Margin</th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="matchTable">
+                    </tbody>
+
+                </table>
+
+            </div>
+
+        </section>
+
+        <div id="message"></div>
+
+    </main>
+
+    <footer>
+        <p>IPL Matches Dashboard | Open Source Technologies Practical</p>
+    </footer>
+
+
+<script>
+
+let matches = [];
+
+
+// ----------------------------------------------------
+// Load CSV
+// ----------------------------------------------------
+
+async function loadCSV() {
+
+    try {
+
+        const response = await fetch("ipl-matches.csv");
+
+        if (!response.ok) {
+            throw new Error("CSV file could not be loaded");
+        }
+
+        const text = await response.text();
+
+        matches = parseCSV(text);
+
+        if (matches.length === 0) {
+            showMessage("No match data found.");
+            return;
+        }
+
+        initializeDashboard();
+
+    } catch (error) {
+
+        console.error(error);
+
+        showMessage(
+            "Unable to load ipl-matches.csv. Make sure index.html and the CSV file are in the same folder."
+        );
+    }
+}
+
+
+// ----------------------------------------------------
+// CSV Parser
+// ----------------------------------------------------
+
+function parseCSV(text) {
+
+    const rows = [];
+    let row = [];
+    let value = "";
+    let insideQuotes = false;
+
+    for (let i = 0; i < text.length; i++) {
+
+        const char = text[i];
+        const next = text[i + 1];
+
+        if (char === '"' && insideQuotes && next === '"') {
+
+            value += '"';
+            i++;
+
+        } else if (char === '"') {
+
+            insideQuotes = !insideQuotes;
+
+        } else if (char === "," && !insideQuotes) {
+
+            row.push(value.trim());
+            value = "";
+
+        } else if ((char === "\n" || char === "\r") && !insideQuotes) {
+
+            if (char === "\r" && next === "\n") {
+                i++;
+            }
+
+            row.push(value.trim());
+
+            if (row.some(cell => cell !== "")) {
+                rows.push(row);
+            }
+
+            row = [];
+            value = "";
+
+        } else {
+
+            value += char;
+        }
+    }
+
+    if (value !== "" || row.length > 0) {
+
+        row.push(value.trim());
+
+        if (row.some(cell => cell !== "")) {
+            rows.push(row);
+        }
+    }
+
+    if (rows.length < 2) {
+        return [];
+    }
+
+    const headers = rows[0].map(header =>
+        header.trim().toLowerCase().replace(/\s+/g, "_")
+    );
+
+    return rows.slice(1).map(row => {
+
+        const object = {};
+
+        headers.forEach((header, index) => {
+            object[header] = row[index] || "";
+        });
+
+        return object;
+    });
+}
+
+
+// ----------------------------------------------------
+// Dashboard initialization
+// ----------------------------------------------------
+
+function initializeDashboard() {
+
+    populateFilters();
+
+    updateStatistics();
+
+    displayMatches(matches);
+
+    document
+        .getElementById("seasonFilter")
+        .addEventListener("change", applyFilters);
+
+    document
+        .getElementById("teamFilter")
+        .addEventListener("change", applyFilters);
+
+    document
+        .getElementById("searchBox")
+        .addEventListener("input", applyFilters);
+}
+
+
+// ----------------------------------------------------
+// Filters
+// ----------------------------------------------------
+
+function populateFilters() {
+
+    const seasonFilter =
+        document.getElementById("seasonFilter");
+
+    const teamFilter =
+        document.getElementById("teamFilter");
+
+    const seasons = new Set();
+    const teams = new Set();
+
+    matches.forEach(match => {
+
+        if (match.season) {
+            seasons.add(match.season);
+        }
+
+        if (match.team1) {
+            teams.add(match.team1);
+        }
+
+        if (match.team2) {
+            teams.add(match.team2);
+        }
+    });
+
+
+    [...seasons]
+        .sort((a, b) => Number(a) - Number(b))
+        .forEach(season => {
+
+            const option = document.createElement("option");
+
+            option.value = season;
+            option.textContent = season;
+
+            seasonFilter.appendChild(option);
+        });
+
+
+    [...teams]
+        .sort()
+        .forEach(team => {
+
+            const option = document.createElement("option");
+
+            option.value = team;
+            option.textContent = team;
+
+            teamFilter.appendChild(option);
+        });
+}
+
+
+// ----------------------------------------------------
+// Apply filters
+// ----------------------------------------------------
+
+function applyFilters() {
+
+    const selectedSeason =
+        document.getElementById("seasonFilter").value;
+
+    const selectedTeam =
+        document.getElementById("teamFilter").value;
+
+    const search =
+        document.getElementById("searchBox")
+        .value
+        .toLowerCase()
+        .trim();
+
+
+    const filtered = matches.filter(match => {
+
+        const seasonMatch =
+            selectedSeason === "all" ||
+            match.season === selectedSeason;
+
+
+        const teamMatch =
+            selectedTeam === "all" ||
+            match.team1 === selectedTeam ||
+            match.team2 === selectedTeam;
+
+
+        const searchableText = [
+
+            match.city,
+            match.venue,
+            match.team1,
+            match.team2,
+            match.winner
+
+        ]
+        .join(" ")
+        .toLowerCase();
+
+
+        const searchMatch =
+            search === "" ||
+            searchableText.includes(search);
+
+
+        return seasonMatch &&
+               teamMatch &&
+               searchMatch;
+    });
+
+
+    displayMatches(filtered);
+
+    updateStatistics(filtered);
+}
+
+
+// ----------------------------------------------------
+// Display table
+// ----------------------------------------------------
+
+function displayMatches(data) {
+
+    const table =
+        document.getElementById("matchTable");
+
+    table.innerHTML = "";
+
+
+    data.forEach(match => {
+
+        const row =
+            document.createElement("tr");
+
+
+        row.innerHTML = `
+
+            <td>${escapeHTML(match.season)}</td>
+
+            <td>${escapeHTML(match.city || "-")}</td>
+
+            <td>${escapeHTML(match.team1 || "-")}</td>
+
+            <td>${escapeHTML(match.team2 || "-")}</td>
+
+            <td class="winner">
+                ${escapeHTML(match.winner || "-")}
+            </td>
+
+            <td>
+                ${escapeHTML(
+                    match.result ||
+                    match.result_margin ||
+                    "-"
+                )}
+            </td>
+
+            <td>
+                ${escapeHTML(
+                    match.result_margin || "-"
+                )}
+            </td>
+
+        `;
+
+        table.appendChild(row);
+    });
+
+
+    document.getElementById("resultCount").textContent =
+        `${data.length} match${data.length === 1 ? "" : "es"}`;
+}
+
+
+// ----------------------------------------------------
+// Statistics
+// ----------------------------------------------------
+
+function updateStatistics(data = matches) {
+
+    document.getElementById("totalMatches").textContent =
+        data.length;
+
+
+    const seasons = new Set();
+
+    const teams = new Set();
+
+    const wins = {};
+
+
+    data.forEach(match => {
+
+        if (match.season) {
+            seasons.add(match.season);
+        }
+
+        if (match.team1) {
+            teams.add(match.team1);
+        }
+
+        if (match.team2) {
+            teams.add(match.team2);
+        }
+
+        if (match.winner) {
+
+            wins[match.winner] =
+                (wins[match.winner] || 0) + 1;
+        }
+    });
+
+
+    document.getElementById("totalSeasons").textContent =
+        seasons.size;
+
+
+    document.getElementById("totalTeams").textContent =
+        teams.size;
+
+
+    let bestTeam = "-";
+    let bestWins = 0;
+
+
+    Object.entries(wins).forEach(([team, count]) => {
+
+        if (count > bestWins) {
+
+            bestTeam = team;
+            bestWins = count;
+        }
+    });
+
+
+    document.getElementById("mostWins").textContent =
+        bestTeam;
+}
+
+
+// ----------------------------------------------------
+// Security helper
+// ----------------------------------------------------
+
+function escapeHTML(value) {
+
+    return String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+}
+
+
+// ----------------------------------------------------
+// Error message
+// ----------------------------------------------------
+
+function showMessage(message) {
+
+    document.getElementById("message").textContent =
+        message;
+}
+
+
+// Start
+loadCSV();
+
+</script>
+
+</body>
+</html>
